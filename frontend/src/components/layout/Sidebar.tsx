@@ -13,8 +13,9 @@ import {
   FileCheck2,
   Sliders,
   ShieldCheck,
-  Zap,
-  Radio
+  Radio,
+  Settings as SettingsIcon,
+  SlidersHorizontal
 } from 'lucide-react';
 
 const navItems = [
@@ -29,6 +30,7 @@ const navItems = [
   { name: 'Incident Simulator', path: '/simulator', icon: Sliders, highlight: true },
   { name: 'Incident Replay', path: '/replay', icon: PlaySquare },
   { name: 'Postmortems', path: '/postmortems', icon: FileCheck2 },
+  { name: 'System Settings', path: '/settings', icon: SettingsIcon, configTag: 'Config' },
 ];
 
 export const Sidebar: React.FC = () => {
@@ -64,7 +66,7 @@ export const Sidebar: React.FC = () => {
                 to={item.path}
                 end={item.path === '/'}
                 className={({ isActive }) =>
-                  `flex items-center justify-between px-3.5 py-2.5 rounded-lg text-xs font-medium transition-all ${
+                  `flex items-center justify-between px-3.5 py-2.5 rounded-xl text-xs font-medium transition-all group ${
                     isActive
                       ? 'bg-blue-600/15 text-blue-400 border border-blue-500/40 shadow-md shadow-blue-500/5 font-semibold'
                       : item.highlight
@@ -74,7 +76,9 @@ export const Sidebar: React.FC = () => {
                 }
               >
                 <div className="flex items-center gap-3">
-                  <Icon className={`w-4 h-4 ${item.highlight ? 'text-amber-400' : ''}`} />
+                  <Icon className={`w-4 h-4 transition-transform duration-300 ${
+                    item.path === '/settings' ? 'group-hover:rotate-90 text-blue-400' : ''
+                  } ${item.highlight ? 'text-amber-400' : ''}`} />
                   <span>{item.name}</span>
                 </div>
                 {item.badge && (
@@ -85,6 +89,11 @@ export const Sidebar: React.FC = () => {
                 {item.highlightTag && (
                   <span className="px-1.5 py-0.5 rounded text-[9px] font-mono bg-purple-500/20 text-purple-300 border border-purple-500/30 font-semibold">
                     {item.highlightTag}
+                  </span>
+                )}
+                {item.configTag && (
+                  <span className="px-1.5 py-0.5 rounded text-[9px] font-mono bg-blue-500/20 text-blue-300 border border-blue-500/30 font-bold">
+                    ⚙️ {item.configTag}
                   </span>
                 )}
               </NavLink>

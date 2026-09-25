@@ -3,7 +3,7 @@ import uuid
 from datetime import datetime, timezone, timedelta
 from typing import Dict, Any, List, Optional
 from sqlalchemy.ext.asyncio import AsyncSession
-from sqlalchemy import select, update
+from sqlalchemy import select
 
 from app.models.service import Service
 from app.models.telemetry import ServiceMetric, LogRecord, TraceSpan, Deployment
@@ -15,22 +15,99 @@ class TelemetrySimulator:
         self.scenario_started_at: Optional[datetime] = None
         self.target_service_name: str = "payment-api"
 
+    async def inject_custom_failure(
+        self,
+        db: AsyncSession,
+        service_name: str,
+        error_rate: float,
+        p95_latency: float,
+        cpu_util: float,
+        db_connections: int,
+        custom_error_log: str
+    ) -> Dict[str, Any]:
+        """Injects a custom user-configured failure scenario."""
+        self.active_scenario = f"custom_{service_name}"
+        self.scenario_started_at = datetime.now(timezone.utc)
+        self.target_service_name = service_name
+
+        res = await db.execute(select(Service).where(Service.name == service_name))
+        service = res.scalars().first()
+        if not service:
+            raise ValueError(f"Service {service_name} not found")
+
+        service.status = "critical"
+        service.error_rate = error_rate
+        service.p95_latency_ms = p95_latency
+        service.cpu_utilization = cpu_util
+        service.active_alerts = 3
+
+        # Create Incident
+        inc_id = f"INC-{random.randint(1100, 9999)}"
+        incident = Incident(
+            id=inc_id,
+            title=f"Custom Chaos Scenario — {service.display_name} degradation",
+            service_id=service.id,
+            service_name=service.name,
+            severity="critical",
+            status="open",
+            error_rate=error_rate,
+            p95_latency_ms=p95_latency,
+            affected_users=random.randint(5000, 25000),
+            detected_at=self.scenario_started_at
+        )
+        db.add(incident)
+
+        # Log Record
+        log = LogRecord(
+            service_id=service.id,
+            service_name=service.name,
+            level="ERROR",
+            message=custom_error_log,
+            trace_id=f"tr-{uuid.uuid4().hex[:8]}"
+        )
+        db.add(log)
+
+        # Service metric snapshot
+        snapshot = ServiceMetric(
+            service_id=service.id,
+            service_name=service.name,
+            timestamp=self.scenario_started_at,
+            cpu_utilization=cpu_util,
+            memory_utilization=78.0,
+            request_rate=240.0,
+            error_rate=error_rate,
+            p95_latency_ms=p95_latency,
+            db_connections=db_connections,
+            active_alerts=3
+        )
+        db.add(snapshot)
+
+        await db.commit()
+        return {
+            "status": "custom_failure_injected",
+            "incident_id": inc_id,
+            "service": service_name,
+            "metrics": {
+                "error_rate": error_rate,
+                "p95_latency_ms": p95_latency,
+                "db_connections": db_connections,
+                "cpu_utilization": cpu_util
+            }
+        }
+
     async def inject_failure(self, db: AsyncSession, scenario: str, target_service: str = "payment-api") -> Dict[str, Any]:
-        """Injects a failure scenario into the telemetry simulation."""
+        """Injects a pre-built failure scenario into the telemetry simulation."""
         self.active_scenario = scenario
         self.scenario_started_at = datetime.now(timezone.utc)
         self.target_service_name = target_service
 
-        # 1. Get service
         res = await db.execute(select(Service).where(Service.name == target_service))
         service = res.scalars().first()
         if not service:
             raise ValueError(f"Service {target_service} not found")
 
-        # 2. Update service status
         service.status = "critical" if scenario in ["db_connection_exhaustion", "deployment_regression"] else "degraded"
         
-        # Scenario metrics config
         if scenario == "db_connection_exhaustion":
             service.error_rate = 38.2
             service.p95_latency_ms = 4820.0
@@ -55,7 +132,7 @@ class TelemetrySimulator:
             service.active_alerts = 2
             db_conn = 95
             title = "Redis connection timeouts causing auth session fallback failures"
-        else: # deployment_regression or latency
+        else:
             service.error_rate = 32.8
             service.p95_latency_ms = 4120.0
             service.cpu_utilization = 88.0
@@ -64,7 +141,6 @@ class TelemetrySimulator:
             db_conn = 460
             title = "Deployment regression payment-service v2.4.1 causing elevated 5xx errors"
 
-        # 3. Insert deployment event if deployment_regression or db_connection_exhaustion
         deploy_time = self.scenario_started_at - timedelta(minutes=4)
         deployment = Deployment(
             service_id=service.id,
@@ -78,7 +154,6 @@ class TelemetrySimulator:
         )
         db.add(deployment)
 
-        # 4. Check if incident INC-1042 already exists or create new
         inc_res = await db.execute(select(Incident).where(Incident.id == "INC-1042"))
         incident = inc_res.scalars().first()
         if not incident:
@@ -104,7 +179,6 @@ class TelemetrySimulator:
             incident.detected_at = self.scenario_started_at
             incident.resolved_at = None
 
-        # 5. Add initial timeline events
         events = [
             IncidentEvent(
                 incident_id="INC-1042",
@@ -134,7 +208,6 @@ class TelemetrySimulator:
         for ev in events:
             db.add(ev)
 
-        # 6. Generate failure log entries with trace IDs
         trace_id = "tr-8901249-payment"
         error_logs = [
             LogRecord(
@@ -154,21 +227,11 @@ class TelemetrySimulator:
                 trace_id=trace_id,
                 span_id="sp-100",
                 attributes_json={"status_code": 500, "duration_ms": 4821.0}
-            ),
-            LogRecord(
-                service_id=service.id,
-                service_name=service.name,
-                level="FATAL",
-                message="psycopg2.OperationalError: FATAL: remaining connection slots are reserved for non-replication superuser connections",
-                trace_id=trace_id,
-                span_id="sp-102",
-                attributes_json={"db_host": "postgres-db:5432"}
             )
         ]
         for lg in error_logs:
             db.add(lg)
 
-        # 7. Generate trace span waterfall
         spans = [
             TraceSpan(
                 trace_id=trace_id,
@@ -197,24 +260,11 @@ class TelemetrySimulator:
                 http_method="POST",
                 http_path="/v1/checkout",
                 error_message="Database pool exhaustion timeout"
-            ),
-            TraceSpan(
-                trace_id=trace_id,
-                span_id="sp-101",
-                parent_span_id="sp-100",
-                service_id=service.id,
-                service_name="postgres-db",
-                operation_name="acquire_connection_pool",
-                start_time=self.scenario_started_at + timedelta(milliseconds=15),
-                duration_ms=4790.0,
-                status_code="ERROR",
-                error_message="QueuePool limit overflow"
             )
         ]
         for sp in spans:
             db.add(sp)
 
-        # 8. Record telemetry snapshot point
         metric_snapshot = ServiceMetric(
             service_id=service.id,
             service_name=service.name,
@@ -244,7 +294,7 @@ class TelemetrySimulator:
         }
 
     async def recover(self, db: AsyncSession, target_service: str = "payment-api") -> Dict[str, Any]:
-        """Resets telemetry back to healthy state after successful remediation."""
+        """Resets telemetry back to healthy baseline state."""
         self.active_scenario = None
         
         res = await db.execute(select(Service).where(Service.name == target_service))
@@ -257,7 +307,6 @@ class TelemetrySimulator:
             service.memory_utilization = 48.0
             service.active_alerts = 0
 
-            # Record healthy metric snapshot
             metric_snapshot = ServiceMetric(
                 service_id=service.id,
                 service_name=service.name,
@@ -272,7 +321,6 @@ class TelemetrySimulator:
             )
             db.add(metric_snapshot)
 
-        # Mark incident resolved
         inc_res = await db.execute(select(Incident).where(Incident.id == "INC-1042"))
         incident = inc_res.scalars().first()
         if incident:

@@ -16,17 +16,16 @@ from app.api.replay import router as replay_router
 from app.api.postmortems import router as postmortems_router
 from app.api.copilot import router as copilot_router
 from app.api.knowledge import router as knowledge_router
+from app.api.settings import router as settings_router
 from app.api.websockets import router as ws_router
 
 @asynccontextmanager
 async def lifespan(app: FastAPI):
-    # Startup: Seed Database & initialize state
     try:
         await seed_database()
     except Exception as e:
         print(f"Startup DB seed warning: {e}")
     yield
-    # Shutdown
 
 app = FastAPI(
     title=settings.PROJECT_NAME,
@@ -34,7 +33,6 @@ app = FastAPI(
     lifespan=lifespan
 )
 
-# Enable CORS for React Frontend
 app.add_middleware(
     CORSMiddleware,
     allow_origins=["*"],
@@ -43,7 +41,6 @@ app.add_middleware(
     allow_headers=["*"],
 )
 
-# Register API Routers
 app.include_router(dashboard_router, prefix=settings.API_V1_STR)
 app.include_router(incidents_router, prefix=settings.API_V1_STR)
 app.include_router(services_router, prefix=settings.API_V1_STR)
@@ -55,6 +52,7 @@ app.include_router(replay_router, prefix=settings.API_V1_STR)
 app.include_router(postmortems_router, prefix=settings.API_V1_STR)
 app.include_router(copilot_router, prefix=settings.API_V1_STR)
 app.include_router(knowledge_router, prefix=settings.API_V1_STR)
+app.include_router(settings_router, prefix=settings.API_V1_STR)
 app.include_router(ws_router)
 
 @app.get("/health")
