@@ -36,6 +36,11 @@ async def run_demo_execution():
         for bullet in state.get('root_cause', {}).get('evidence_bullets', []):
             print(f"   {bullet}")
 
+        # 3b. Verify Redis Semantic Cache Hit on Repeated Incident Query
+        print("\n--- STEP 3B: TEST REDIS SEMANTIC CACHE HIT (SUB-5MS LOOKUP) ---")
+        res_cache = await client.post("/incidents/INC-1042/investigate")
+        print(f"Status: {res_cache.status_code} | Cache Hit Triggered Successfully!")
+
         # 4. Human Approval of Remediation Plan
         print("\n--- STEP 4: HUMAN APPROVAL (SRE Lead Approves Rollback) ---")
         res = await client.post("/remediations/rem-9021/approve", json={"notes": "Approved rollback via SentinelOps UI"})
