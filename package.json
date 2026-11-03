@@ -1,0 +1,11 @@
+{
+  "name": "sentinelops-ai",
+  "version": "1.0.0",
+  "private": true,
+  "description": "SentinelOps AI — Agentic SRE Incident Response & Observability Platform",
+  "scripts": {
+    "build": "cd frontend && npm install && npm run build",
+    "start": "cd frontend && npm run preview",
+    "dev": "cd frontend && npm run dev"
+  }
+}
