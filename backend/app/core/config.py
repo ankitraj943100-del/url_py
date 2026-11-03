@@ -11,9 +11,10 @@ class Settings(BaseSettings):
 
     # Database Configuration
     # Defaults to SQLite async for instant zero-config running, easily overridable to Postgres
+    _DEFAULT_DB: str = os.path.abspath(os.path.join(os.path.dirname(__file__), "../../../sentinelops.db"))
     DATABASE_URL: str = os.getenv(
         "DATABASE_URL",
-        "sqlite+aiosqlite:///./sentinelops.db"
+        f"sqlite+aiosqlite:///{_DEFAULT_DB}"
     )
     
     # Redis Configuration
